@@ -1,3 +1,8 @@
+from kivy.config import Config
+Config.set('graphics', 'width', '400')
+Config.set('graphics', 'height', '600')
+Config.set('graphics', 'resizable', False)
+
 from kivy.app import App
 from kivy.uix.screenmanager import ScreenManager
 from database import init_db
@@ -6,7 +11,7 @@ from screens.admin import AdminScreen
 from screens.kasir import KasirScreen
 from screens.laporan import LaporanScreen
 
-init_db()  # pastikan tabel dan default user ada
+init_db()
 
 class KasirPOS(App):
     def build(self):
