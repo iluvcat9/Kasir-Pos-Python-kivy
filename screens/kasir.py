@@ -6,6 +6,7 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.textinput import TextInput
 from kivy.uix.popup import Popup
+from kivy.uix.filechooser import FileChooserIconView
 
 from database import connect, now
 from utilist import rupiah
@@ -15,15 +16,35 @@ from reportlab.lib.pagesizes import A6
 from reportlab.lib.styles import getSampleStyleSheet
 
 import os
+import platform
+import subprocess
 
 # =========================
-# PATH OUTPUT
+# PATH OUTPUT DEFAULT
 # =========================
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUTPUT_DIR = os.path.join(BASE_DIR, "output")
-STRUK_PATH = os.path.join(OUTPUT_DIR, "struk.pdf")
 
 
+# =========================
+# FUNGS BANTU
+# =========================
+def open_pdf(path):
+    """Buka PDF dengan viewer default sesuai OS"""
+    try:
+        if platform.system() == "Windows":
+            os.startfile(path)
+        elif platform.system() == "Darwin":  # macOS
+            subprocess.run(["open", path])
+        else:  # Linux
+            subprocess.run(["xdg-open", path])
+    except Exception as e:
+        print("Gagal membuka PDF:", e)
+
+
+# =========================
+# KELAS KASIR
+# =========================
 class KasirScreen(Screen):
 
     def __init__(self, **kwargs):
@@ -215,19 +236,55 @@ class KasirScreen(Screen):
         box.add_widget(Label(text=f"Bayar : Rp {rupiah(bayar)}"))
         box.add_widget(Label(text=f"Kembali : Rp {rupiah(kembalian)}"))
 
+        # Tombol CETAK PDF dengan pilih lokasi
         btn = Button(text="CETAK PDF", size_hint_y=None, height=40)
-        btn.bind(on_press=lambda x: self.cetak_pdf(sale_id))
+        btn.bind(on_press=lambda x: self.pilih_lokasi_pdf(sale_id))
         box.add_widget(btn)
 
         Popup(title="Struk", content=box, size_hint=(0.8, 0.8)).open()
 
     # =========================
-    # CETAK PDF + NOTIFIKASI
+    # PILIH LOKASI DAN NAMA FILE PDF
     # =========================
-    def cetak_pdf(self, sale_id):
-        os.makedirs(OUTPUT_DIR, exist_ok=True)
+    def pilih_lokasi_pdf(self, sale_id):
+        box = BoxLayout(orientation="vertical", spacing=5, padding=5)
 
-        doc = SimpleDocTemplate(STRUK_PATH, pagesize=A6)
+        # FileChooser untuk pilih folder
+        fc = FileChooserIconView(path=OUTPUT_DIR, dirselect=True)
+        box.add_widget(fc)
+
+        # TextInput untuk nama file
+        nama_file_input = TextInput(text=f"struk_{sale_id}.pdf", multiline=False, size_hint_y=None, height=30)
+        box.add_widget(Label(text="Nama file:"))
+        box.add_widget(nama_file_input)
+
+        # Tombol simpan
+        btn_save = Button(text="Simpan PDF", size_hint_y=None, height=40)
+
+        def save_pdf(instance):
+            folder = fc.path
+            nama_file = nama_file_input.text.strip()
+            if not nama_file.endswith(".pdf"):
+                nama_file += ".pdf"
+            full_path = os.path.join(folder, nama_file)
+            self.cetak_pdf(sale_id, full_path)
+            popup.dismiss()
+
+        btn_save.bind(on_press=save_pdf)
+        box.add_widget(btn_save)
+
+        popup = Popup(title="Pilih Lokasi & Nama File PDF", content=box, size_hint=(0.9, 0.9))
+        popup.open()
+
+    # =========================
+    # CETAK PDF + BUKA OTOMATIS
+    # =========================
+    def cetak_pdf(self, sale_id, output_path=None):
+        if not output_path:
+            output_path = os.path.join(OUTPUT_DIR, f"struk_{sale_id}.pdf")
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+        doc = SimpleDocTemplate(output_path, pagesize=A6)
         styles = getSampleStyleSheet()
         content = []
 
@@ -249,10 +306,7 @@ class KasirScreen(Screen):
             (sale_id,)
         ):
             content.append(
-                Paragraph(
-                    f"{name} x{qty} = Rp {rupiah(price * qty)}",
-                    styles["Normal"]
-                )
+                Paragraph(f"{name} x{qty} = Rp {rupiah(price * qty)}", styles["Normal"])
             )
 
         conn.close()
@@ -262,13 +316,15 @@ class KasirScreen(Screen):
         content.append(Paragraph(f"Bayar   : Rp {rupiah(bayar)}", styles["Normal"]))
         content.append(Paragraph(f"Kembali : Rp {rupiah(kembalian)}", styles["Normal"]))
 
+        # Buat PDF
         doc.build(content)
 
-        # NOTIFIKASI SUKSES
+        # Buka PDF otomatis
+        open_pdf(output_path)
+
+        # Popup sukses
         Popup(
             title="Sukses",
-            content=Label(
-                text=f"Struk PDF berhasil dibuat\n\n{STRUK_PATH}"
-            ),
+            content=Label(text=f"Struk PDF berhasil dibuat\n\n{output_path}"),
             size_hint=(0.75, 0.35)
         ).open()
